@@ -2,8 +2,11 @@
 import DateTime from "./DateTime";
 import Dropdown from "./Dropdown";
 import Table from "./Table";
+import { useMetrics } from "../contexts/MetricsContext";
 
 export default function AdminHistory(){
+
+    const { allMetrics } = useMetrics();
     return(
         <>
             <div className="h-full w-full flex flex-col gap-8 scrollbar-overlay">
@@ -17,12 +20,6 @@ export default function AdminHistory(){
 
                 {/* Table Container */}
                 <div className="flex flex-col gap-4">
-
-                    <div className="flex items-center gap-2 ml-auto">
-                        Sort By:
-
-                        <Dropdown />
-                    </div>
 
                     {/* Table */}
                     <div className="flex flex-col gap-8">
@@ -41,11 +38,11 @@ export default function AdminHistory(){
 
                             {/* Values Row */}
                             <div className="border-2 border-black px-4 py-2 bg-gray-100 font-semibold"></div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">68 hrs 5 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">1 hr 15 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">8 hrs</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">2 hrs 5 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">1 hr 10 mins</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.regularHours || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.overtime || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.nightDifferential || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.late || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.undertime || 0).toFixed(2)} hours</div>
                         </div>
                     </div>
                 </div>

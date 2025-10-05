@@ -1,65 +1,61 @@
-import { useEffect } from "react";
+import React from "react";
 
-declare const window: any;
+interface DropdownOption {
+  value: string;
+  label: string;
+}
 
-export default function Dropdown() {
-  useEffect(() => {
-    // Reinitialize dropdowns after React renders
-    if (window.initFlowbite) {
-      window.initFlowbite();
-    }
-  }, []);
+interface DropdownProps {
+  options: string[] | DropdownOption[];
+  value: string;
+  onChange: (val: string) => void;
+  disabled?: boolean;
+}
+
+const Dropdown: React.FC<DropdownProps> = ({ options, value, onChange, disabled }) => {
+  const isObjectOptions = typeof options[0] === "object";
 
   return (
-    <>
-      <button
-        id="dropdownDefaultButton"
-        data-dropdown-toggle="dropdown"
-        className="text-black bg-[#cfcfcf] font-medium rounded-lg text-sm px-5 py-2.5 text-center 
-        inline-flex items-center"
-        type="button"
+    <div className="relative inline-block w-full">
+      <select
+        className={`
+          w-full appearance-none rounded-xl border border-gray-300 
+          bg-white px-4 py-2 pr-10 text-sm shadow-sm 
+          focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200
+          hover:border-gray-400 transition
+          ${disabled ? "bg-gray-100 text-gray-400 cursor-not-allowed" : ""}
+        `}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
       >
-        Dropdown button
+        {options.map((opt) =>
+          isObjectOptions ? (
+            <option key={(opt as DropdownOption).value} value={(opt as DropdownOption).value}>
+              {(opt as DropdownOption).label}
+            </option>
+          ) : (
+            <option key={opt as string} value={opt as string}>
+              {opt as string}
+            </option>
+          )
+        )}
+      </select>
+
+      {/* Custom dropdown arrow */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
         <svg
-          className="w-2.5 h-2.5 ms-3"
-          aria-hidden="true"
+          className="h-4 w-4 text-gray-500"
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
-          viewBox="0 0 10 6"
+          viewBox="0 0 20 20"
+          stroke="currentColor"
         >
-          <path
-            stroke="currentColor"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="2"
-            d="m1 1 4 4 4-4"
-          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 8l4 4 4-4" />
         </svg>
-      </button>
-
-      {/* Dropdown Menu */}
-      <div
-        id="dropdown"
-        className="z-10 hidden bg-[#cfcfcf] divide-y divide-gray-100 rounded-lg shadow-sm w-44"
-      >
-        <ul
-          className="py-2 text-sm text-black"
-          aria-labelledby="dropdownDefaultButton"
-        >
-          <li>
-            <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Dashboard</a>
-          </li>
-          <li>
-            <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Settings</a>
-          </li>
-          <li>
-            <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Earnings</a>
-          </li>
-          <li>
-            <a href="#" className="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Sign out</a>
-          </li>
-        </ul>
       </div>
-    </>
+    </div>
   );
-}
+};
+
+export default Dropdown;

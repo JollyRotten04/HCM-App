@@ -5,11 +5,14 @@ import Dropdown from "./Dropdown";
 import Chart from "./Chart";
 import Table from './Table';
 import { useState } from "react";
+import { useMetrics } from "../contexts/MetricsContext";
 
 export default function AdminDashboard(){
 
     const [selectedTimePeriod, setSelectedTimePeriod] = useState("Daily"); // Selects Daily By Default
-    const [selectedMetric, setSelectedMetric] = useState("Regular Hours"); // Selects Regular Hours By Default
+    const [selectedMetric] = useState("Regular Hours"); // Selects Regular Hours By Default
+
+    const { allMetrics } = useMetrics();
 
     return(
         <>
@@ -24,7 +27,7 @@ export default function AdminDashboard(){
                 </div>
 
                 <div>
-                    <KPIMetrics />
+                    <KPIMetrics selectedTimePeriod={selectedTimePeriod}/>
                 </div>
 
                 {/* Chart Container */}
@@ -42,21 +45,7 @@ export default function AdminDashboard(){
 
                     {/* Chart */}
                     <div className="h-[30rem] w-full bg-[#cfcfcf] p-8 rounded-xl">
-                        <Chart></Chart>
-                    </div>
-
-                    {/* Bottom Buttons */}
-                    <div className="flex portrait:flex-col portrait:md:flex-row portrait:lg:flex-row portrait:xl:flex-row justify-between gap-4">
-
-                        <button onClick={() => {setSelectedMetric('Regular Hours')}} draggable='false' className={`transition-all duration-300 ease-in-out p-4 w-full select-none cursor-pointer rounded-lg inter-normal text-xl ${selectedMetric == 'Regular Hours' ? 'bg-[#B5CBB7] text-white shadow-lg' : 'bg-[#cfcfcf] text-black'}`} type="button">Regular Hours</button>
-
-                        <button onClick={() => {setSelectedMetric('Overtime')}} draggable='false' className={`transition-all duration-300 ease-in-out p-4 w-full select-none cursor-pointer rounded-lg inter-normal text-xl ${selectedMetric == 'Overtime' ? 'bg-[#B5CBB7] text-white shadow-lg' : 'bg-[#cfcfcf] text-black'}`} type="button">Overtime</button>
-
-                        <button onClick={() => {setSelectedMetric('Night Differential')}} draggable='false' className={`transition-all duration-300 ease-in-out p-4 w-full select-none cursor-pointer rounded-lg inter-normal text-xl ${selectedMetric == 'Night Differential' ? 'bg-[#B5CBB7] text-white shadow-lg' : 'bg-[#cfcfcf] text-black'}`} type="button">Night Differential</button>
-
-                        <button onClick={() => {setSelectedMetric('Late')}} draggable='false' className={`transition-all duration-300 ease-in-out p-4 w-full select-none cursor-pointer rounded-lg inter-normal text-xl ${selectedMetric == 'Late' ? 'bg-[#B5CBB7] text-white shadow-lg' : 'bg-[#cfcfcf] text-black'}`} type="button">Late</button>
-
-                        <button onClick={() => {setSelectedMetric('Undertime')}} draggable='false' className={`transition-all duration-300 ease-in-out p-4 w-full select-none cursor-pointer rounded-lg inter-normal text-xl ${selectedMetric == 'Undertime' ? 'bg-[#B5CBB7] text-white shadow-lg' : 'bg-[#cfcfcf] text-black'}`} type="button">Undertime</button>
+                        <Chart selectedMetric={selectedMetric}></Chart>
                     </div>
                 </div>
 
@@ -64,12 +53,6 @@ export default function AdminDashboard(){
                 <div className="w-full flex flex-col">
 
                     <p className="text-black select-none text-3xl inter-semilight portrait:text-center">Daily Table</p>
-
-                    <div className="ml-auto">
-                        <p className="text-black select-none text-lg inter-semilight portrait:text-center">Sort By:</p>
-
-                        <Dropdown />
-                    </div>
 
                     {/* Table */}
                     <div className="mt-8 flex flex-col gap-8">
@@ -88,12 +71,12 @@ export default function AdminDashboard(){
                             <div className="border-2 border-black px-4 py-2 font-bold bg-[#B5CBB7]">Undertime</div>
 
                             {/* Values Row */}
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100 font-semibold"></div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">68 hrs 5 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">1 hr 15 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">8 hrs</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">2 hrs 5 mins</div>
-                            <div className="border-2 border-black px-4 py-2 bg-gray-100">1 hr 10 mins</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100"></div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.regularHours || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.overtime || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.nightDifferential || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.late || 0).toFixed(2)} hours</div>
+                            <div className="border-2 border-black px-4 py-2 bg-gray-100">{(allMetrics?.undertime || 0).toFixed(2)} hours</div>
                         </div>
                     </div>
                 </div>

@@ -1,5 +1,7 @@
 // Imported components
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useUserTypeOption } from "../contexts/UserTypeContext";
 import EyeIcon from "../assets/eye.svg";
 import UnhiddenEyeIcon from "../assets/crossed-eye.svg";
 import BackArrow from "../assets/arrow.svg";
@@ -20,6 +22,10 @@ export default function Login(){
     const [password, setPassword] = useState("");
     const [retypePassword, setRetypePassword] = useState("");
     const [forgotPassEmail, setForgotPassEmail] = useState("");
+
+    // To navigte back to login when pressing back...
+    const navigate = useNavigate();
+    const { setIsAdmin } = useUserTypeOption(); // Uses value of isAdmin in useContext...
 
     // errors stored per field to highlight borders red and display error messages...
     const [errors, setErrors] = useState({
@@ -66,28 +72,106 @@ export default function Login(){
         setForgotPassword(!forgotPassword);
     };
 
-    // Handles form submission...
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
 
-        const newErrors: any = {};
+  const newErrors: any = {};
+  // Basic validation
+  if (!email) newErrors.email = "Email is required";
+  if (!password) newErrors.password = "Password is required";
+  if (!login) {
+    if (!firstName) newErrors.firstName = "First name is required";
+    if (!lastName) newErrors.lastName = "Last name is required";
+    if (!retypePassword) newErrors.retypePassword = "Please retype your password";
+    if (password && retypePassword && password !== retypePassword)
+      newErrors.retypePassword = "Passwords do not match";
+  }
 
-        if (!email) newErrors.email = "Email is required";
-        if (!password) newErrors.password = "Password is required";
+  setErrors(newErrors);
+  if (Object.keys(newErrors).length > 0) {
+    console.warn("Validation failed:", newErrors);
+    return;
+  }
 
-        if (!login) {
-            if (!firstName) newErrors.firstName = "First name is required";
-            if (!lastName) newErrors.lastName = "Last name is required";
-            if (!retypePassword) newErrors.retypePassword = "Please retype your password";
-        }
+    try {
+        if (login) {
+  // LOGIN flow
+  const response = await fetch("http://localhost:5000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+  });
 
-        setErrors(newErrors);
+  const data = await response.json();
 
-        // Stop submission if there are errors...
-        if (Object.keys(newErrors).length > 0) return;
+  if (!response.ok) {
+      alert(data.message || "Login failed");
+      return;
+  }
 
-        console.log("Form submitted", { email, password, firstName, lastName, retypePassword });
-    };
+  // Save auth info to localStorage
+  localStorage.setItem("token", data.token);
+  localStorage.setItem("userId", data.userId);
+  localStorage.setItem("isAdmin", data.isAdmin ? "true" : "false");
+
+  // Save first & last name of current user to display
+
+//   console.log(data);
+  localStorage.setItem("firstName", data.firstName);
+  localStorage.setItem("lastName", data.lastName);
+
+  // Update context
+  setIsAdmin(data.isAdmin);
+
+  navigate("/authenticated");
+}
+
+    else {
+      // SIGNUP flow
+    //   console.log("Attempting registration with:", { firstName, lastName, email });
+
+      await registerUser({ firstName, lastName, email, password, retypePassword });
+      alert("Registration successful! You can now log in.");
+      setLogin(true); // Switch back to login
+    }
+  } catch (err) {
+    console.error("Error during handleSubmit:", err);
+    alert("Something went wrong. Please try again later.");
+  }
+};
+
+// Updated registerUser with logging
+async function registerUser({ firstName, lastName, email, password, retypePassword }) {
+  try {
+    const response = await fetch("http://localhost:5000/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        email,
+        password,
+        retypePassword,
+        role: "employee", // default role
+        schedule: { start: "09:00", end: "18:00" } // default schedule
+      }),
+    });
+
+    console.log("Register response status:", response.status);
+    const data = await response.json();
+    // console.log("Register response body:", data);
+
+    if (!response.ok) {
+      console.error("Registration failed:", data.message);
+      return;
+    }
+
+    localStorage.setItem("token", data.token);
+    // console.log("User registered successfully. Is admin?", data.isAdmin);
+  } catch (err) {
+    console.error("Error registering user:", err);
+  }
+}
 
 
     return(
@@ -159,15 +243,6 @@ export default function Login(){
                                         <button type="button" draggable='false' onClick={() => {changeIcon('password')}}><img src={icon} className="absolute top-1/2 transform -translate-y-1/2 right-4 h-4 select-none cursor-pointer" alt="" /></button>
                                     </div>
                                     {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
-                                </div>
-
-                                <div
-                                    className={`
-                                    transition-all duration-300 ease-in-out overflow-hidden
-                                    ${!login ? "max-h-0 opacity-0" : "max-h-[500px] opacity-100"}
-                                    `}
-                                >
-                                    {!login ? <></> : <><button onClick={() => {invokeForgotPassword()}} draggable='false' type="button"><p className="text-black select-none cursor-pointer text-base inter-light font-extralight">Forgot password</p></button></>}
                                 </div>
                             </div>
 

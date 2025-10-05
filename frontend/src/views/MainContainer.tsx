@@ -4,7 +4,9 @@ import AdminDashboard from "../components/AdminDashboard";
 import AdminEmployees from "../components/AdminEmployees";
 import AdminHistory from "../components/AdminHistory";
 import EmployeeDashboard from "../components/EmployeeDashboard";
+import EmployeeHistory from "../components/EmployeeHistory";
 import { useSelectedOption } from "../contexts/SelectedOptionContext";
+import { useUserTypeOption } from "../contexts/UserTypeContext";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -12,7 +14,7 @@ export default function MainContainer(){
 
     const [logoutModal, setLogoutModal] = useState(false);
     const { selectedOption } = useSelectedOption(); // Selects Dashboard in Navbar by default...
-    const [isAdmin, setIsAdmin] = useState(false);
+    const { isAdmin } = useUserTypeOption(); // Uses value of isAdmin in useContext...
 
     // To navigte back to login when pressing back...
     const navigate = useNavigate();
@@ -46,7 +48,7 @@ export default function MainContainer(){
                     
                     <>
                         {selectedOption === "Dashboard" && <EmployeeDashboard />}
-                        {/* {selectedOption === "History" && <AdminHistory />} */}
+                        {selectedOption === "History" && <EmployeeHistory />}
                     </>}
                 </div>
             </div>

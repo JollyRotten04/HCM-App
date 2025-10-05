@@ -20,12 +20,6 @@ export default function AdminEmployees(){
                         {/* Table Container */}
                         <div className="flex flex-col gap-4">
             
-                            <div className="flex items-center gap-2 ml-auto">
-                                Sort By:
-            
-                                <Dropdown />
-                            </div>
-            
                         {/* Table */}
                         <div className="flex flex-col gap-8">
                             <Table />

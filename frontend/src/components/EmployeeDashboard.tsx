@@ -1,45 +1,225 @@
-// Imported components...
 import DateTime from "./DateTime";
 import Table from "./Table";
+import { useState, useEffect } from "react";
 
-export default function EmployeeDashboard(){
-    return(
-        <>
-            <div className="h-full w-full flex flex-col gap-8 scrollbar-overlay">
-            
-                <div className="flex justify-between portrait:flex-col portrait:md:flex-row portrait:lg:flex-row portrait:xl:flex-row">
-                    <p className="text-black select-none text-3xl inter-semilight portrait:text-center">Welcome Bitchass!</p>
-            
-                    {/* Date, Day, And Time Component */}
-                    <DateTime />
-                </div>
+export default function EmployeeDashboard() {
+  // 🔑 Persisted states
+  const [punchedIn, setPunchedIn] = useState(
+    JSON.parse(localStorage.getItem("punchedIn") || "false")
+  );
+  const [punchedOut, setPunchedOut] = useState(
+    JSON.parse(localStorage.getItem("punchedOut") || "false")
+  );
+  const [currentEmployeeId, setCurrentEmployeeId] = useState(
+    localStorage.getItem("userId") || ""
+  );
 
-                {/* Punch In and Punch Out */}
-                <div className="flex justify-evenly mt-8">
 
-                    <div className="flex flex-col gap-4">
-                        <p className="text-black select-none text-2xl inter-light text-center">Start: 9:00AM</p>
+  const [firstName] = useState(localStorage.getItem("firstName") || "");
+  const [lastName] = useState(localStorage.getItem("lastName") || "");
 
-                        <button className="bg-[#cfcfcf] w-72 text-black text-4xl inter-normal p-6 px-12 rounded-xl">Punch-In</button>
-                    </div>
+  // console.log(lastName);
 
-                     <div className="flex flex-col gap-4">
-                        <p className="text-black select-none text-2xl inter-light text-center">End: 6:00PM</p>
+  // Restore session info on mount
+  useEffect(() => {
+    const userId = localStorage.getItem("userId");
+    
+  if (userId) {
+    // console.log("Current logged-in userId:", userId);
+    setCurrentEmployeeId(userId);
+  }
+}, []);
 
-                        <button className="bg-[#cfcfcf] w-72 text-black text-4xl inter-normal p-6 px-12 rounded-xl">Punch-Out</button>
-                    </div>
-                </div>
+  const togglePunchIn = async () => {
+  // If already punched in, do nothing
+  if (punchedIn) {
+    console.log("Already punched in — no request made.");
+    return;
+  }
 
-                {/* Punch-In Punch-Out Remarks */}
-                <div className="flex flex-col gap-4">
+  // ✅ Mark as punched in
+  setPunchedIn(true);
+  localStorage.setItem("punchedIn", "true");
 
-                    <p className="text-black select-none text-xl inter-light">Start Remarks: <span className="inter-normal">Not yet started</span></p>
-                    <p className="text-black select-none text-xl inter-light">End Remarks: <span className="inter-normal">Not yet ended</span></p>
-                </div>
+  // Reset punch-out since we are starting fresh
+  setPunchedOut(false);
+  localStorage.setItem("punchedOut", "false");
 
-                {/* Recent History, 7 Days */}
-                <Table />
-            </div>
-        </>
-    );
+  // Only now call backend
+  await savePunch("punchIn");
+};
+
+const togglePunchOut = async () => {
+  // Can't punch out without punching in first
+  if (!punchedIn) {
+    alert("You need to punch in first!");
+    return;
+  }
+
+  // If already punched out → reset both
+  if (punchedOut) {
+    console.log("Resetting state after second Punch-Out click.");
+    setPunchedIn(false);
+    setPunchedOut(false);
+    localStorage.setItem("punchedIn", "false");
+    localStorage.setItem("punchedOut", "false");
+    return;
+  }
+
+  // Mark as punched out
+  setPunchedOut(true);
+  localStorage.setItem("punchedOut", "true");
+
+  // Only now call backend
+  await savePunch("punchOut");
+};
+
+  // Local date & time
+  const getCurrentDateLocal = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const getCurrentTimeLocal = () => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    return `${hours}:${minutes}:${seconds}`;
+  };
+
+  // Save punch to backend using logged-in userId
+  async function savePunch(field: "punchIn" | "punchOut") {
+    const date = getCurrentDateLocal();
+    const timestamp = getCurrentTimeLocal();
+    const token = localStorage.getItem("token");
+    const userId = localStorage.getItem("userId"); // 🔑 Always fetch fresh from storage
+
+    if (!userId || !token) {
+      alert("User not logged in");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:5000/api/auth/punch", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` // 🔑 send JWT
+        },
+        body: JSON.stringify({ 
+          userId,        // ✅ pass userId to backend
+          punchType: field,
+          date,          // ✅ optional: send date
+          time: timestamp // ✅ optional: send timestamp
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error("Failed to save punch:", data.message);
+        alert(`Failed to save ${field}: ${data.message || "Unknown error"}`);
+        return;
+      }
+
+      console.log(`${field} saved for ${userId} on ${date} at ${timestamp}`);
+    } catch (err) {
+      console.error("Error saving punch:", err);
+      alert(`Error saving ${field}. Please try again.`);
+    }
+  }
+
+  // const [users, setUsers] = useState<any[]>([]);
+
+  // useEffect(() => {
+  //   const token = localStorage.getItem("token");
+  //   if (!token) return;
+
+  //   const fetchUsers = async () => {
+  //     try {
+  //       const res = await fetch("http://localhost:5000/api/auth/users", {
+  //         headers: { Authorization: `Bearer ${token}` },
+  //       });
+  //       const data = await res.json();
+  //       if (res.ok) setUsers(data);
+  //     } catch (err) {
+  //       console.error("Failed to fetch users:", err);
+  //     }
+  //   };
+
+  //   fetchUsers();
+  // }, []);
+
+
+
+  return (
+    <div className="h-full w-full flex flex-col gap-8 scrollbar-overlay">
+      <div className="flex justify-between portrait:flex-col portrait:md:flex-row portrait:lg:flex-row portrait:xl:flex-row">
+        <p className="text-black select-none text-3xl inter-semilight portrait:text-center">
+          Welcome {firstName} {lastName}!
+        </p>
+
+        <DateTime />
+      </div>
+
+      {/* Punch In / Out Buttons */}
+      <div className="flex portrait:flex-col md:portrait:flex-row lg:portrait:flex-row xl:portrait:flex-row justify-evenly mt-8">
+        <div className="flex flex-col gap-4">
+          <p className="text-black select-none text-2xl inter-light text-center">
+            Start: 9:00AM
+          </p>
+          <button
+            draggable="false"
+            onClick={togglePunchIn}
+            disabled={punchedOut}
+            className={`${
+              punchedIn ? "bg-[#B5CBB7]" : "bg-[#cfcfcf]"
+            } ${
+              punchedOut ? "opacity-50 cursor-not-allowed" : "cursor-pointer"
+            } select-none w-86 portrait:w-full md:portrait:w-86 lg:portrait:w-86 text-black text-4xl inter-normal p-6 px-12 rounded-xl`}
+          >
+            {punchedIn ? "Punched-In" : "Punch-In"}
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <p className="text-black select-none text-2xl inter-light text-center">
+            End: 6:00PM
+          </p>
+          <button
+            draggable="false"
+            onClick={togglePunchOut}
+            className={`${
+              punchedOut ? "bg-[#B5CBB7]" : "bg-[#cfcfcf]"
+            } select-none cursor-pointer w-86 portrait:w-full md:portrait:w-86 lg:portrait:w-86 text-black text-4xl inter-normal p-6 px-12 rounded-xl`}
+          >
+            {punchedOut ? "Punched-Out" : "Punch-Out"}
+          </button>
+        </div>
+      </div>
+
+      {/* Remarks */}
+      <div className="flex flex-col gap-4">
+        <p className="text-black select-none text-xl inter-light">
+          Start Remarks:{" "}
+          <span className="inter-normal">
+            {punchedIn ? "You have punched in." : "Not yet started"}
+          </span>
+        </p>
+        <p className="text-black select-none text-xl inter-light">
+          End Remarks:{" "}
+          <span className="inter-normal">
+            {punchedOut ? "You have punched out." : "Not yet ended"}
+          </span>
+        </p>
+      </div>
+
+      {/* Recent History */}
+      <Table />
+    </div>
+  );
 }
