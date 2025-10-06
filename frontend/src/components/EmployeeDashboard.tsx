@@ -3,14 +3,15 @@ import Table from "./Table";
 import { useState, useEffect } from "react";
 
 export default function EmployeeDashboard() {
-  // 🔑 Persisted states
+  // Persisted states
   const [punchedIn, setPunchedIn] = useState(
     JSON.parse(localStorage.getItem("punchedIn") || "false")
   );
   const [punchedOut, setPunchedOut] = useState(
     JSON.parse(localStorage.getItem("punchedOut") || "false")
   );
-  const [currentEmployeeId, setCurrentEmployeeId] = useState(
+ 
+  const [, setCurrentEmployeeId] = useState(
     localStorage.getItem("userId") || ""
   );
 
@@ -37,7 +38,7 @@ export default function EmployeeDashboard() {
     return;
   }
 
-  // ✅ Mark as punched in
+  // Mark as punched in
   setPunchedIn(true);
   localStorage.setItem("punchedIn", "true");
 
@@ -96,7 +97,7 @@ const togglePunchOut = async () => {
     const date = getCurrentDateLocal();
     const timestamp = getCurrentTimeLocal();
     const token = localStorage.getItem("token");
-    const userId = localStorage.getItem("userId"); // 🔑 Always fetch fresh from storage
+    const userId = localStorage.getItem("userId"); // Always fetch fresh from storage
 
     if (!userId || !token) {
       alert("User not logged in");
@@ -108,13 +109,13 @@ const togglePunchOut = async () => {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` // 🔑 send JWT
+          Authorization: `Bearer ${token}` // send JWT
         },
         body: JSON.stringify({ 
-          userId,        // ✅ pass userId to backend
+          userId,        // pass userId to backend
           punchType: field,
-          date,          // ✅ optional: send date
-          time: timestamp // ✅ optional: send timestamp
+          date,          // optional: send date
+          time: timestamp // optional: send timestamp
         }),
       });
 
@@ -132,29 +133,6 @@ const togglePunchOut = async () => {
       alert(`Error saving ${field}. Please try again.`);
     }
   }
-
-  // const [users, setUsers] = useState<any[]>([]);
-
-  // useEffect(() => {
-  //   const token = localStorage.getItem("token");
-  //   if (!token) return;
-
-  //   const fetchUsers = async () => {
-  //     try {
-  //       const res = await fetch("http://localhost:5000/api/auth/users", {
-  //         headers: { Authorization: `Bearer ${token}` },
-  //       });
-  //       const data = await res.json();
-  //       if (res.ok) setUsers(data);
-  //     } catch (err) {
-  //       console.error("Failed to fetch users:", err);
-  //     }
-  //   };
-
-  //   fetchUsers();
-  // }, []);
-
-
 
   return (
     <div className="h-full w-full flex flex-col gap-8 scrollbar-overlay">

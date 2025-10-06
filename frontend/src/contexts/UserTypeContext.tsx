@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 
 // Define the shape of your context
 type UserTypeContextType = {
@@ -29,6 +29,7 @@ export function UserTypeProvider({ children }: { children: ReactNode }) {
 }
 
 // Hook to use context
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUserTypeOption() {
   const context = useContext(UserTypeContext);
   if (!context) {

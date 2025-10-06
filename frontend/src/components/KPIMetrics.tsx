@@ -4,11 +4,31 @@ import DecreaseIcon from '../assets/decreaseIcon.svg';
 import { useKPIStats } from '../contexts/KPIStatsContext';
 import { useState, useEffect } from 'react';
 
-export default function KPIMetrics({ selectedTimePeriod }){
-    const [stats, setStats] = useState(null);
+interface KPIMetricsProps {
+    selectedTimePeriod: string;
+}
+
+interface StatsSummary {
+    regularHoursCount: number;
+    overtimeCount: number;
+    undertimeCount: number;
+    lateCount: number;
+    absentCount: number;
+    nightDifferentialCount: number;
+    total: number;
+}
+
+interface StatsData {
+    summary: StatsSummary;
+}
+
+
+export default function KPIMetrics({ selectedTimePeriod }: KPIMetricsProps){
+    const [stats, setStats] = useState<StatsData | null>(null);
+
     const [isLoading, setIsLoading] = useState(false);
 
-    const { setStatsContext } = useKPIStats();
+    const { setStatsContext } = useKPIStats() as { setStatsContext: (data: StatsData) => void };
 
     useEffect(() => {
     const fetchStats = async () => {
@@ -23,15 +43,8 @@ export default function KPIMetrics({ selectedTimePeriod }){
                 // Use today's date for daily
                 dateParam = new Date().toISOString().split('T')[0];
             } else if (period === "weekly") {
-                // Past 7 days as comma-separated string or however backend expects
-                const dates: string[] = [];
-                for (let i = 0; i < 7; i++) {
-                    const d = new Date();
-                    d.setDate(d.getDate() - i);
-                    dates.push(d.toISOString().split('T')[0]);
-                }
-                // join by comma if backend expects multiple dates
-                dateParam = dates.join(',');
+                const today = new Date();
+                dateParam = today.toISOString().split('T')[0];
             }
 
             const response = await fetch(`http://localhost:5000/api/auth/employee-stats?date=${dateParam}&period=${period}`, {
@@ -56,37 +69,32 @@ export default function KPIMetrics({ selectedTimePeriod }){
     };
 
     fetchStats();
-}, [selectedTimePeriod]);
+}, [selectedTimePeriod, setStatsContext]);
 
 
     // Calculate percentages and determine if metrics are meeting targets
-    const calculateMetrics = (category) => {
+    const calculateMetrics = (category: keyof StatsSummary) => {
         if (!stats) return { count: 0, percentage: 0, isGood: false };
-        
-        const count = stats.summary[`${category}Count`] || 0;
+
+        const count = stats.summary[category] || 0;
         const total = stats.summary.total || 1;
-        const percentage = ((count / total) * 100).toFixed(1);
-        
-        // Define what's "good" for each category
+        const percentage = (count / total) * 100; // keep it as number
+
         let isGood = false;
-        if (category === 'regularHours') {
-            isGood = percentage >= 70; // Good if 70%+ are regular hours
-        } else if (category === 'overtime') {
-            isGood = percentage <= 20; // Good if overtime is 20% or less
-        } else if (category === 'undertime' || category === 'absent' || category === 'late') {
-            isGood = percentage <= 10; // Good if undertime/absent/late is 10% or less
-        } else if (category === 'nightDifferential') {
-            isGood = true; // Or define your own criteria
-        }
-        
-        return { count, percentage, isGood };
+        if (category === 'regularHoursCount') isGood = percentage >= 70;
+        else if (category === 'overtimeCount') isGood = percentage <= 20;
+        else if (category === 'undertimeCount' || category === 'absentCount' || category === 'lateCount') isGood = percentage <= 10;
+        else if (category === 'nightDifferentialCount') isGood = true;
+
+        return { count, percentage: Number(percentage.toFixed(1)), isGood };
     };
 
-    const regularMetrics = calculateMetrics('regularHours');
-    const overtimeMetrics = calculateMetrics('overtime');
-    const undertimeMetrics = calculateMetrics('undertime');
-    const lateMetrics = calculateMetrics('late');
-    const nightDiffMetrics = calculateMetrics('nightDifferential');
+
+    const regularMetrics = calculateMetrics('regularHoursCount');
+    const overtimeMetrics = calculateMetrics('overtimeCount');
+    const undertimeMetrics = calculateMetrics('undertimeCount');
+    const lateMetrics = calculateMetrics('lateCount');
+    const nightDiffMetrics = calculateMetrics('nightDifferentialCount');
 
     return(
         <>

@@ -1,7 +1,6 @@
 // Imported components...
 import DateTime from "./DateTime";
 import KPIMetrics from "./KPIMetrics";
-import Dropdown from "./Dropdown";
 import Chart from "./Chart";
 import Table from './Table';
 import { useState } from "react";
@@ -10,7 +9,6 @@ import { useMetrics } from "../contexts/MetricsContext";
 export default function AdminDashboard(){
 
     const [selectedTimePeriod, setSelectedTimePeriod] = useState("Daily"); // Selects Daily By Default
-    const [selectedMetric] = useState("Regular Hours"); // Selects Regular Hours By Default
 
     const { allMetrics } = useMetrics();
 
@@ -45,7 +43,7 @@ export default function AdminDashboard(){
 
                     {/* Chart */}
                     <div className="h-[30rem] w-full bg-[#cfcfcf] p-8 rounded-xl">
-                        <Chart selectedMetric={selectedMetric}></Chart>
+                        <Chart></Chart>
                     </div>
                 </div>
 

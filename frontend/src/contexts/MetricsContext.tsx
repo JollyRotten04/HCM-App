@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 type Metrics = {
   regularHours: number;
@@ -31,6 +31,7 @@ export function MetricsProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMetrics() {
   const context = useContext(MetricsContext);
   if (!context) {

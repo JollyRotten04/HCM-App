@@ -4,7 +4,18 @@ import { useEffect, useState } from "react";
 
 export default function Chart() {
   const { employeeStats } = useKPIStats();
-  const [data, setData] = useState([]);
+
+  // To prevent Typescript error due to uncertain variable types...
+  type ChartData = {
+    name: string;
+    "Regular Hours": number;
+    Overtime: number;
+    Undertime: number;
+    Late: number;
+    "Night Differential": number;
+  };
+
+  const [data, setData] = useState<ChartData[]>([]);
 
   useEffect(() => {
     console.group("Preparing KPI Metric Chart");

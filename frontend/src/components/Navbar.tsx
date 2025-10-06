@@ -10,7 +10,13 @@ import SelectedHistoryIcon from "../assets/selectedHistoryIcon.svg";
 import { useState } from "react";
 import { useSelectedOption } from "../contexts/SelectedOptionContext";
 
-export default function Navbar({ toggleLogout, isAdmin }) {
+// Annotation to quiet TypeScript error throwing
+type NavbarProps = {
+  toggleLogout: (show: boolean) => void;
+  isAdmin: boolean;
+};
+
+export default function Navbar({ toggleLogout, isAdmin }: NavbarProps) {
   const [openNavbar, setOpenNavbar] = useState(false);
 
   const { selectedOption, setSelectedOption } = useSelectedOption();

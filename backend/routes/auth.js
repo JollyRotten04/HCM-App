@@ -120,7 +120,7 @@ router.get("/users", async (req, res) => {
     const snap = await db.collection("users").get();
     let users = snap.docs.map(doc => {
       const data = doc.data();
-      delete data.password; // 🚨 don’t expose hashed passwords
+      delete data.password; 
       return { id: doc.id, ...data };
     });
 
@@ -140,15 +140,14 @@ router.get("/employee-stats", async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
-    const { date, period = 'daily' } = req.query; // period: 'daily', 'weekly', 'monthly'
+    const { date, period = 'daily' } = req.query;
     const targetDate = date || new Date().toLocaleDateString("en-CA");
     const dateObj = new Date(targetDate);
     if (isNaN(dateObj)) return res.status(400).json({ message: "Invalid target date" });
 
-    // Calculate date range
-    let startDate, endDate, dateRange;
+    let startDate, endDate;
     if (period === 'weekly') {
-      const dayOfWeek = dateObj.getDay(); // Sunday = 0
+      const dayOfWeek = dateObj.getDay();
       startDate = new Date(dateObj); startDate.setDate(dateObj.getDate() - dayOfWeek);
       endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6);
     } else if (period === 'monthly') {
@@ -159,12 +158,10 @@ router.get("/employee-stats", async (req, res) => {
       endDate = dateObj;
     }
 
-    dateRange = `${startDate.toLocaleDateString("en-CA")} to ${endDate.toLocaleDateString("en-CA")}`;
-
     const startDateStr = startDate.toLocaleDateString("en-CA");
     const endDateStr = endDate.toLocaleDateString("en-CA");
+    const dateRange = `${startDateStr} to ${endDateStr}`;
 
-    // Fetch users
     const usersSnap = await db.collection("users").get();
     const users = {};
     usersSnap.forEach(doc => {
@@ -177,13 +174,11 @@ router.get("/employee-stats", async (req, res) => {
       };
     });
 
-    // Fetch attendance for date range
     const attendanceSnap = await db.collection("attendance")
       .where("date", ">=", startDateStr)
       .where("date", "<=", endDateStr)
       .get();
 
-    // Group punches by userId and date
     const punchRecordsByUser = {};
     attendanceSnap.forEach(doc => {
       const data = doc.data();
@@ -201,79 +196,97 @@ router.get("/employee-stats", async (req, res) => {
       return h * 60 + m;
     };
 
-    // Initialize stats
     const stats = {
-      regularHours: [],
-      overtime: [],
-      undertime: [],
-      late: [],
-      nightDifferential: [],
-      total: 0
+      totalEmployees: 0,
+      employees: [],
+      nightDiffCount: 0
     };
 
-    // Categorize users
     for (const [userId, user] of Object.entries(users)) {
       if (!user.schedule) continue;
-      stats.total++;
+      stats.totalEmployees++;
 
       const userPunchesByDay = punchRecordsByUser[userId] || {};
-      const daysWithPunches = Object.keys(userPunchesByDay);
-      if (daysWithPunches.length === 0) continue; // skip users with no punches
-
-      let isRegular = true;
-      let isOvertime = false;
-      let isUndertime = false;
-      let isLate = false;
-      let isNightDiff = false;
+      const userStat = {
+        userId,
+        name: user.name,
+        regularHours: 0,
+        overtime: 0,
+        undertime: 0,
+        late: 0,
+        nightDifferential: 0,
+        nightDiffFlag: false
+      };
 
       const schStartMinutes = timeToMinutes(user.schedule.start);
       const schEndMinutes = timeToMinutes(user.schedule.end);
 
-      const nightStart = 22 * 60;
-      const nightEnd = 6 * 60;
-      const worksNightShift = schStartMinutes >= nightStart || schEndMinutes <= nightEnd;
-
       for (const dayPunches of Object.values(userPunchesByDay)) {
         const punchIn = dayPunches.find(p => p.punchType === "punchIn");
         const punchOut = dayPunches.find(p => p.punchType === "punchOut");
-        if (!punchIn || !punchOut) {
-          isRegular = false;
-          continue;
-        }
+        if (!punchIn || !punchOut) continue;
 
         const punchInMinutes = timeToMinutes(punchIn.time);
         const punchOutMinutes = timeToMinutes(punchOut.time);
 
-        if (punchInMinutes > schStartMinutes) { isLate = true; isRegular = false; }
-        if (punchOutMinutes < schEndMinutes) { isUndertime = true; isRegular = false; }
-        if (punchOutMinutes - punchInMinutes > schEndMinutes - schStartMinutes) { isOvertime = true; isRegular = false; }
+        // Late
+        if (punchInMinutes > schStartMinutes) userStat.late += (punchInMinutes - schStartMinutes) / 60;
 
-        if (worksNightShift && (punchInMinutes >= nightStart || punchOutMinutes <= nightEnd)) {
-          isNightDiff = true; isRegular = false;
+        // Regular hours
+        const regularStart = Math.max(punchInMinutes, schStartMinutes);
+        const regularEnd = Math.min(punchOutMinutes, schEndMinutes);
+        const regularMinutes = Math.max(0, regularEnd - regularStart);
+        userStat.regularHours += regularMinutes / 60;
+
+        // Overtime
+        const overtimeMinutes = Math.max(0, punchOutMinutes - schEndMinutes);
+        userStat.overtime += overtimeMinutes / 60;
+
+        // Undertime
+        const undertimeMinutes = Math.max(0, schEndMinutes - punchOutMinutes);
+        userStat.undertime += undertimeMinutes / 60;
+
+        // Night differential
+        const nightStart = 22 * 60;
+        const nightEnd = 6 * 60;
+        let nightMinutes = 0;
+
+        if (punchOutMinutes < punchInMinutes) {
+          // crosses midnight
+          const firstPart = Math.max(0, 24 * 60 - punchInMinutes);
+          const secondPart = punchOutMinutes;
+          nightMinutes += Math.max(0, Math.min(firstPart, 24*60 - nightStart));
+          nightMinutes += Math.max(0, Math.min(secondPart, nightEnd));
+        } else {
+          if (punchInMinutes < nightEnd) nightMinutes += Math.min(punchOutMinutes, nightEnd) - punchInMinutes;
+          if (punchOutMinutes > nightStart) nightMinutes += punchOutMinutes - Math.max(punchInMinutes, nightStart);
         }
+
+        if (nightMinutes > 0) userStat.nightDiffFlag = true;
+        userStat.nightDifferential += nightMinutes / 60;
       }
 
-      if (isRegular) stats.regularHours.push(user);
-      if (isOvertime) stats.overtime.push(user);
-      if (isUndertime) stats.undertime.push(user);
-      if (isLate) stats.late.push(user);
-      if (isNightDiff) stats.nightDifferential.push(user);
+      if (userStat.nightDiffFlag) stats.nightDiffCount++;
+
+      stats.employees.push(userStat);
     }
+
+    const summary = {
+      totalEmployees: stats.totalEmployees,
+      nightDifferentialCount: stats.nightDiffCount,
+      totalRegularHours: stats.employees.reduce((sum, u) => sum + u.regularHours, 0),
+      totalOvertime: stats.employees.reduce((sum, u) => sum + u.overtime, 0),
+      totalUndertime: stats.employees.reduce((sum, u) => sum + u.undertime, 0),
+      totalLate: stats.employees.reduce((sum, u) => sum + u.late, 0),
+      totalNightDifferentialHours: stats.employees.reduce((sum, u) => sum + u.nightDifferential, 0)
+    };
 
     res.json({
       period,
       date: targetDate,
       dateRange,
-      totalEmployees: stats.total,
-      summary: {
-        total: stats.total,
-        regularHoursCount: stats.regularHours.length,
-        overtimeCount: stats.overtime.length,
-        undertimeCount: stats.undertime.length,
-        lateCount: stats.late.length,
-        nightDifferentialCount: stats.nightDifferential.length
-      },
-      details: stats
+      summary,
+      details: stats.employees
     });
 
   } catch (err) {
@@ -281,6 +294,8 @@ router.get("/employee-stats", async (req, res) => {
     res.status(500).json({ message: "Server error", error: err.message });
   }
 });
+
+
 
 // Punch-in and Punch-out Route
 router.post("/punch", async (req, res) => {
@@ -309,7 +324,7 @@ router.post("/punch", async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // // 🔥 Debug log
+    // // Debug log
     // console.log(
     //   `Attendance recorded → userId=${userId}, punchType=${punchType}, date=${localDate}, time=${localTime}, timezone=${timezone}`
     // );
@@ -447,7 +462,7 @@ router.put("/attendance/update", async (req, res) => {
       .get();
 
     if (!existingSnap.empty) {
-      // ✅ Update existing doc(s)
+      // Update existing doc(s)
       const batch = db.batch();
       existingSnap.forEach((doc) => {
         const data = doc.data();
@@ -466,10 +481,10 @@ router.put("/attendance/update", async (req, res) => {
       });
 
       await batch.commit();
-      console.log(`✏️ Updated attendance for ${userId} on ${normalizedDate}`);
+      // console.log(`Updated attendance for ${userId} on ${normalizedDate}`);
       return res.json({ message: "Attendance updated successfully" });
     } else {
-      // ✅ Create new docs if none exist
+      // Create new docs if none exist
       const batch = db.batch();
 
       if (punchIn) {
@@ -493,7 +508,7 @@ router.put("/attendance/update", async (req, res) => {
       }
 
       await batch.commit();
-      console.log(`➕ Created attendance for ${userId} on ${normalizedDate}`);
+      // console.log(`Created attendance for ${userId} on ${normalizedDate}`);
       return res.json({ message: "Attendance created successfully" });
     }
   } catch (err) {

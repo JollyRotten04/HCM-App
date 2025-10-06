@@ -1,6 +1,5 @@
 // Imported components...
 import DateTime from "./DateTime";
-import Dropdown from "./Dropdown";
 import Table from "./Table";
 
 export default function AdminEmployees(){

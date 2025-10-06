@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Imported Components...
 import ViewIcon from '../assets/eyeWhiteIcon.svg';
 import EditIcon from '../assets/editWhiteIcon.svg';
@@ -8,6 +9,24 @@ import { useState, useRef, useEffect } from 'react';
 import { useSelectedOption } from '../contexts/SelectedOptionContext';
 import { useUserTypeOption } from "../contexts/UserTypeContext";
 import { useMetrics } from "../contexts/MetricsContext";
+
+interface User {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  schedule?: {
+    start: string;
+    end: string;
+  };
+}
+
+interface GroupedRecord {
+  date: string;
+  userId: string;
+  punchIn: string;
+  punchOut: string;
+}
 
 // Utility: convert "9:00 AM" → Date object (for comparison)
 function parseTime(timeStr: string) {
@@ -43,7 +62,6 @@ function formatTime(time24: string) {
   return `${h12}:${minutes} ${ampm}`;
 }
 
-// Calculate all attendance metrics in minutes
 function calculateMetrics(punchInTime: string, punchOutTime: string, shiftStart = "09:00", shiftEnd = "18:00") {
   if (!punchInTime || !punchOutTime) {
     return {
@@ -55,55 +73,83 @@ function calculateMetrics(punchInTime: string, punchOutTime: string, shiftStart 
     };
   }
 
+  // Parse times
   const punchIn = new Date(`2000-01-01T${punchInTime}`);
-  const punchOut = new Date(`2000-01-01T${punchOutTime}`);
+  let punchOut = new Date(`2000-01-01T${punchOutTime}`);
   const schedStart = new Date(`2000-01-01T${shiftStart}`);
-  const schedEnd = new Date(`2000-01-01T${shiftEnd}`);
+  let schedEnd = new Date(`2000-01-01T${shiftEnd}`);
 
-  // Convert to minutes
+  // Handle overnight shifts (e.g., 22:00 to 06:00)
+  const isOvernightShift = schedEnd <= schedStart;
+  if (isOvernightShift) {
+    schedEnd = new Date(`2000-01-02T${shiftEnd}`);
+  }
+  
+  // If punch out is before punch in, it crossed midnight
+  if (punchOut <= punchIn) {
+    punchOut = new Date(`2000-01-02T${punchOutTime}`);
+  }
+
   const punchInMin = punchIn.getTime() / (1000 * 60);
   const punchOutMin = punchOut.getTime() / (1000 * 60);
   const schedStartMin = schedStart.getTime() / (1000 * 60);
   const schedEndMin = schedEnd.getTime() / (1000 * 60);
 
-  // Calculate late (minutes late to punch in)
-  const late = Math.max(0, punchInMin - schedStartMin);
+  // Calculate late (only if clocked in AFTER scheduled start)
+  let late = 0;
+  if (punchInMin > schedStartMin) {
+    late = punchInMin - schedStartMin;
+  }
 
-  // Calculate undertime (minutes left early)
-  const undertime = Math.max(0, schedEndMin - punchOutMin);
+  // Calculate undertime (only if clocked out BEFORE scheduled end)
+  let undertime = 0;
+  if (punchOutMin < schedEndMin) {
+    undertime = schedEndMin - punchOutMin;
+  }
 
-  // Actual work start/end (clamped to scheduled times for regular hours)
+  // Regular hours: time worked within the scheduled shift
   const workStart = Math.max(punchInMin, schedStartMin);
   const workEnd = Math.min(punchOutMin, schedEndMin);
-
-  // Regular hours = time worked within scheduled shift (in minutes)
   const regularMinutes = Math.max(0, workEnd - workStart);
 
-  // Overtime = time worked after scheduled end
-  const overtime = Math.max(0, punchOutMin - schedEndMin);
+  // Overtime: hours worked before scheduled start OR after scheduled end
+  let overtimeMinutes = 0;
+  
+  // Early clock-in (before scheduled start)
+  if (punchInMin < schedStartMin) {
+    overtimeMinutes += schedStartMin - punchInMin;
+  }
+  
+  // Late clock-out (after scheduled end)
+  if (punchOutMin > schedEndMin) {
+    overtimeMinutes += punchOutMin - schedEndMin;
+  }
 
-  // Night differential (22:00 to 06:00) - simplified
+  // Night differential calculation (10 PM to 6 AM)
   const nightStart = new Date(`2000-01-01T22:00`).getTime() / (1000 * 60);
   const nightEnd = new Date(`2000-01-02T06:00`).getTime() / (1000 * 60);
-  
+
   let nightDifferential = 0;
-  if (punchOutMin > nightStart) {
-    nightDifferential = Math.min(punchOutMin, nightEnd) - nightStart;
-  }
+
+  // Calculate hours worked during night differential period (10 PM - 6 AM)
+  const ndStart = Math.max(punchInMin, nightStart);
+  const ndEnd = Math.min(punchOutMin, nightEnd);
+  nightDifferential = Math.max(0, ndEnd - ndStart);
 
   return {
     regularHours: Math.round((regularMinutes / 60) * 100) / 100,
-    overtime: Math.round((overtime / 60) * 100) / 100,
+    overtime: Math.round((overtimeMinutes / 60) * 100) / 100,
     nightDifferential: Math.round((nightDifferential / 60) * 100) / 100,
     late: Math.round((late / 60) * 100) / 100,
     undertime: Math.round((undertime / 60) * 100) / 100
   };
 }
 
+
 export default function Table() {
     const [attendance, setAttendance] = useState<any[]>([]);
     const [groupedAttendance, setGroupedAttendance] = useState<any[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [selectedEmployee, setSelectedEmployee] = useState<any>(null);
     const [dailySummaries, setDailySummaries] = useState<any[]>([]);
 
@@ -114,11 +160,8 @@ export default function Table() {
     const [openModal, setOpenModal] = useState(false);
     const [selectedAction, setSelectedAction] = useState("");
     const [punchIn, setPunchIn] = useState("09:00");
-    const [punchOut, setPunchOut] = useState("18:00");
-    const [editMode, setEditMode] = useState(false);
+    const [punchOut, setPunchOut] = useState("18:00")
     const [editRow, setEditRow] = useState<number | null>(null);
-     const [editShiftStart, setEditShiftStart] = useState<string>("");
-    const [editShiftEnd, setEditShiftEnd] = useState<string>("");
     
 
     const [editValues, setEditValues] = useState({
@@ -134,15 +177,13 @@ export default function Table() {
     };
 
     const startEditRow = (i: number, emp: any) => {
-  setEditRow(i);
-  setEditValues({
-    role: emp.role || "employee",
-    shiftStart: emp.schedule?.shiftStart || "09:00",
-    shiftEnd: emp.schedule?.shiftEnd || "18:00",
-  });
-};
-
-
+      setEditRow(i);
+      setEditValues({
+        role: emp.role || "employee",
+        shiftStart: emp.schedule?.start || "09:00",
+        shiftEnd: emp.schedule?.end || "18:00",
+      });
+    };
 
     const punchInRef = useRef<HTMLInputElement>(null);
     const punchOutRef = useRef<HTMLInputElement>(null);
@@ -176,22 +217,19 @@ export default function Table() {
 
                 if (res1.ok) {
                     setAttendance(attendanceData);
-
-                    const grouped: Record<string, any> = attendanceData.reduce((acc, record) => {
+                    const grouped: Record<string, GroupedRecord> = attendanceData.reduce((acc: Record<string, GroupedRecord>, record: { date: string; userId: string; punchType: string; time: string }) => {
                         const key = `${record.date}-${record.userId}`;
-                        if (!acc[key]) acc[key] = { date: record.date, userId: record.userId, punchIn: null, punchOut: null };
+                        if (!acc[key]) acc[key] = { date: record.date, userId: record.userId, punchIn: "", punchOut: "" };
                         if (record.punchType === "punchIn") acc[key].punchIn = record.time;
                         if (record.punchType === "punchOut") acc[key].punchOut = record.time;
                         return acc;
                     }, {});
 
                     const groupedArray = Object.values(grouped).sort(
-                        (a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()
+                        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
                     );
 
                     setGroupedAttendance(groupedArray);
-
-                    // setAllMetrics(aggregatedMetrics);
                 }
 
                 if (res2.ok) setUsers(usersData);
@@ -205,40 +243,37 @@ export default function Table() {
         fetchData();
     }, [selectedOption, setAllMetrics]);
 
-
     const saveTotalMetricsToBackend = async (metrics: any) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
+        const token = localStorage.getItem("token");
+        if (!token) return;
 
-    try {
-        const response = await fetch("http://localhost:5000/api/auth/total-metrics", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({
-                metrics: {
-                    regularHours: metrics.regularHours,
-                    overtime: metrics.overtime,
-                    nightDifferential: metrics.nightDifferential,
-                    late: metrics.late,
-                    undertime: metrics.undertime
+        try {
+            const response = await fetch("http://localhost:5000/api/auth/total-metrics", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
                 },
-                timestamp: new Date().toISOString(),
-                period: "daily"
-            })
-        });
+                body: JSON.stringify({
+                    metrics: {
+                        regularHours: metrics.regularHours,
+                        overtime: metrics.overtime,
+                        nightDifferential: metrics.nightDifferential,
+                        late: metrics.late,
+                        undertime: metrics.undertime
+                    },
+                    timestamp: new Date().toISOString(),
+                    period: "daily"
+                })
+            });
 
-        if (!response.ok) {
-            console.error("Failed to save metrics to dailySummary");
-        } else {
-            // console.log(" Metrics saved to dailySummary collection");
+            if (!response.ok) {
+                console.error("Failed to save metrics to dailySummary");
+            }
+        } catch (err) {
+            console.error("Error saving metrics:", err);
         }
-    } catch (err) {
-        console.error("Error saving metrics:", err);
-    }
-};
+    };
 
     // Pass value to useContext
     useEffect(() => {
@@ -264,11 +299,14 @@ export default function Table() {
         const attendanceRows = users
             .filter((u) => u.role === "employee")
             .flatMap((emp) => {
-                const recs = groupedList.filter((rec) => rec.userId === emp.userId && rec.punchIn);
+                const recs = groupedList.filter((rec) => (rec as GroupedRecord).userId === emp.userId && (rec as GroupedRecord).punchIn);
                 if (recs.length === 0) return [];
 
                 return recs.map((rec) => {
-                    const metrics = calculateMetrics(rec.punchIn, rec.punchOut);
+                    const metrics = calculateMetrics(
+                      (rec as GroupedRecord).punchIn,
+                      (rec as GroupedRecord).punchOut
+                    );
                     return {
                         regularHours: metrics.regularHours,
                         overtime: metrics.overtime,
@@ -297,8 +335,6 @@ export default function Table() {
             }
         );
 
-        // console.log(totalMetrics)
-
         // Update setter with value
         setAllMetrics(totalMetrics);
 
@@ -313,39 +349,35 @@ export default function Table() {
 
         try {
             const response = await fetch("http://localhost:5000/api/auth/attendance/update", {
-            method: "PUT", // or POST depending on your backend
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                userId,
-                date,
-                punchIn,
-                punchOut,
-            }),
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    userId,
+                    date,
+                    punchIn,
+                    punchOut,
+                }),
             });
 
             if (!response.ok) throw new Error("Failed to update attendance");
 
-            // console.log("Attendance updated in DB");
             return await response.json();
         } catch (err) {
             console.error("Error updating attendance:", err);
         }
     };
 
-    
-
     const handleSave = async () => {
         if (!selectedEmployee) return;
 
-        const { userId, date } = selectedEmployee; // 👈 directly from clicked row
+        const { userId, date } = selectedEmployee;
 
         const result = await updateAttendance(userId, date, punchIn, punchOut);
 
         if (result) {
-            // Update local state so table refreshes without reload
             setAttendance((prev) =>
                 prev.map((rec) =>
                     rec.userId === userId && rec.date === date
@@ -358,9 +390,6 @@ export default function Table() {
         }
     };
 
-
-
-
     return (
         <>
             <div className="overflow-y-auto max-h-[585px] no-scrollbar"> 
@@ -372,7 +401,7 @@ export default function Table() {
                     <tr>
                         {isAdmin ? 
                             <>
-                                {selectedOption == 'Employees' ? 
+                                {selectedOption === 'Employees' ? 
                                 
                                 <>
                                     {/* Nothing */}
@@ -387,7 +416,7 @@ export default function Table() {
                                 <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Employee ID</th>
                                 <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Employee Name</th>
 
-                                {selectedOption == 'Employees' ? 
+                                {selectedOption === 'Employees' ? 
                                     <>
                                         <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Role</th>
                                         <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Start-Time</th>
@@ -410,7 +439,7 @@ export default function Table() {
                             <>
                                 <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Date</th>
 
-                                {selectedOption == 'Dashboard' ? 
+                                {selectedOption === 'Dashboard' ? 
                                     <>
                                         <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">Start Time</th>
                                         <th className="border-2 border-black bg-[#B5CBB7] px-4 py-2">End Time</th>
@@ -439,14 +468,12 @@ export default function Table() {
                         });
 
                         return last7Days.map((date, i) => {
-                            const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+                            const dateStr = date.toISOString().split('T')[0];
                             
-                            // Try to find daily summary first
                             const summary = dailySummaries.find(
                               (s) => s.date === dateStr
                             );
 
-                            // Fallback to grouped attendance if no summary
                             const record = groupedAttendance.find(
                               (r) => new Date(r.date).toDateString() === date.toDateString()
                             );
@@ -459,7 +486,6 @@ export default function Table() {
                               ? formatTime(summary.punchOut) 
                               : (record?.punchOut ? formatTime(record.punchOut) : "");
 
-                            // Calculate metrics using raw time values
                             const punchInRaw = summary?.punchIn || record?.punchIn || "";
                             const punchOutRaw = summary?.punchOut || record?.punchOut || "";
                             const metrics = calculateMetrics(punchInRaw, punchOutRaw);
@@ -473,7 +499,7 @@ export default function Table() {
                                     day: "numeric",
                                 })}
                                 </td>
-                                {selectedOption == "Dashboard" ? (
+                                {selectedOption === "Dashboard" ? (
                                 <>
                                     <td
                                     className={`border-2 border-black px-4 py-2 ${
@@ -516,19 +542,16 @@ export default function Table() {
                     ) : (
                     // Admin Dashboard
                     (() => {
-                    // 🔹 If viewing Employees, show user list instead of attendance
                     if (selectedOption === 'Employees') {
                         const employeeRows = users.filter((u) => u.role === "employee");
                         
-                        // Add placeholders to make minimum 10 rows
                         const placeholdersNeeded = Math.max(0, 10 - employeeRows.length);
                         const placeholderRows = Array.from({ length: placeholdersNeeded }, () => ({
                             userId: "—",
                             firstName: "—",
                             lastName: "",
                             role: "—",
-                            shiftStart: "—",
-                            shiftEnd: "—",
+                            schedule: { start: "—", end: "—" },
                         }));
 
                         const finalRows = [...employeeRows, ...placeholderRows];
@@ -568,95 +591,107 @@ export default function Table() {
                                             setEditValues((prev) => ({
                                             ...prev,
                                             shiftStart: val,
-                                            shiftEnd: SHIFT_PAIRS[val], // sync automatically
+                                            shiftEnd: SHIFT_PAIRS[val],
                                             }))
                                         }
                                         />
                                     ) : (
-                                        isPlaceholder ? "—" : (emp.schedule.shiftStart ? formatTime(emp.schedule.shiftStart) : "9:00 AM")
+                                        isPlaceholder ? "—" : (emp.schedule?.start ? formatTime(emp.schedule.start) : "9:00 AM")
                                     )}
                                     </td>
 
                                     <td className="border-2 border-black px-4 py-2">
                                     {editRow === i ? (
                                         <Dropdown
-                                        options={[
-                                            { value: "18:00", label: "6:00 PM" },
-                                            { value: "06:00", label: "6:00 AM" },
-                                        ]}
-                                        value={editValues.shiftEnd}
-                                        disabled
+                                                options={[
+                                                    { value: "18:00", label: "6:00 PM" },
+                                                    { value: "06:00", label: "6:00 AM" },
+                                                ]}
+                                                value={editValues.shiftEnd}
+                                                disabled 
+                                                onChange={() => {}}
                                         />
                                     ) : (
-                                        isPlaceholder ? "—" : (emp.schedule.shiftEnd ? formatTime(emp.schedule.shiftEnd) : "6:00 PM")
+                                        isPlaceholder ? "—" : (emp.schedule?.end ? formatTime(emp.schedule.end) : "6:00 PM")
                                     )}
                                     </td>
                                 <td className="border-2 border-black px-2 py-2">
                                     <div className="inline-flex gap-2 justify-center w-full">
                                     
                                           <button
-  onClick={async () => {
-    if (selectedOption === "Employees") {
-      if (!isPlaceholder) {
-        if (editRow === i) {
-          // Exiting edit mode → send update request
-          try {
-            const response = await fetch("http://localhost:5000/api/auth/update-user", {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("token")}`, // your JWT token
-              },
-              body: JSON.stringify({
-                userId: emp.userId,
-                role: editValues.role,             // make sure role is updated in state
-                shiftStart: editValues.shiftStart, // updated start time
-                shiftEnd: editValues.shiftEnd,     // updated end time
-              }),
-            });
+                                                onClick={async () => {
+                                                    if (selectedOption === "Employees") {
+                                                    if (!isPlaceholder) {
+                                                        if (editRow === i) {
+                                                        try {
+                                                            const response = await fetch("http://localhost:5000/api/auth/update-user", {
+                                                            method: "PUT",
+                                                            headers: {
+                                                                "Content-Type": "application/json",
+                                                                Authorization: `Bearer ${localStorage.getItem("token")}`,
+                                                            },
+                                                            body: JSON.stringify({
+                                                                userId: emp.userId,
+                                                                role: editValues.role,
+                                                                shiftStart: editValues.shiftStart,
+                                                                shiftEnd: editValues.shiftEnd,
+                                                            }),
+                                                            });
 
-            const data = await response.json();
+                                                            const data = await response.json();
 
-            if (!response.ok) throw new Error(data.message || "Failed to update user");
+                                                            if (!response.ok) throw new Error(data.message || "Failed to update user");
 
-            console.log("User updated:", data);
+                                                            setUsers((prevUsers) =>
+                                                                prevUsers.map((u) =>
+                                                                    u.userId === emp.userId
+                                                                    ? {
+                                                                        ...u,
+                                                                        role: editValues.role,
+                                                                        schedule: {
+                                                                            start: editValues.shiftStart,
+                                                                            end: editValues.shiftEnd,
+                                                                        },
+                                                                        }
+                                                                    : u
+                                                                )
+                                                            );
 
-            setEditMode(false);
-          } catch (err) {
-            console.error("Error updating user:", err);
-          }
-        } else {
-          startEditRow(i, emp); // Enter edit mode
-        }
-      }
-    } else {
-      actionSelect(editRow === i ? "Done" : "Edit", emp);
-    }
-  }}
-  draggable="false"
-  disabled={isPlaceholder}
-  type="button"
-  className={`p-2 rounded-lg shadow-lg select-none ${
-    isPlaceholder
-      ? "bg-gray-300 cursor-not-allowed opacity-60"
-      : "bg-[#B5CBB7] cursor-pointer"
-  }`}
->
-  <img
-    draggable="false"
-    src={editRow === i ? DoneIcon : EditIcon}
-    className="select-none cursor-pointer h-4"
-    alt=""
-  />
-</button>
+                                                            setEditRow(null);
+                                                        } catch (err) {
+                                                            console.error("Error updating user:", err);
+                                                        }
+                                                        } else {
+                                                        startEditRow(i, emp);
+                                                        }
+                                                    }
+                                                    } else {
+                                                    actionSelect(editRow === i ? "Done" : "Edit", emp);
+                                                    }
+                                                }}
+                                                draggable="false"
+                                                disabled={isPlaceholder}
+                                                type="button"
+                                                className={`p-2 rounded-lg shadow-lg select-none ${
+                                                    isPlaceholder
+                                                    ? "bg-gray-300 cursor-not-allowed opacity-60"
+                                                    : "bg-[#B5CBB7] cursor-pointer"
+                                                }`}
+                                                >
+                                                <img
+                                                    draggable="false"
+                                                    src={editRow === i ? DoneIcon : EditIcon}
+                                                    className="select-none cursor-pointer h-4"
+                                                    alt=""
+                                                />
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
                         )});
                     }
 
-                    // 🔹 Group attendance by (userId + date)
-                    const groupedAttendance = attendance.reduce((acc, rec) => {
+                    const groupedAttendanceLocal = attendance.reduce((acc, rec) => {
                         const key = `${rec.userId}_${rec.date}`;
                         if (!acc[key]) {
                         acc[key] = { userId: rec.userId, date: rec.date, punchIn: "", punchOut: "" };
@@ -668,25 +703,22 @@ export default function Table() {
                         acc[key].punchOut = rec.time;
                         }
                         return acc;
-                    }, {});
+                    }, {} as Record<string, GroupedRecord>);
 
-                    const groupedList = Object.values(groupedAttendance);
+                    const groupedList = Object.values(groupedAttendanceLocal);
 
-                    // 🔹 Actual attendance rows (only employees who have at least punched in)
                     const attendanceRows = users
-                        .filter((u) => u.role === "employee") // only employees
+                        .filter((u) => u.role === "employee")
                         .flatMap((emp) => {
-                        const recs = groupedList.filter((rec) => rec.userId === emp.userId && rec.punchIn);
+                        const recs = groupedList.filter((rec) => (rec as GroupedRecord).userId === emp.userId && (rec as GroupedRecord).punchIn);
 
-                        // 🔹 Skip employees who have not punched in yet
                         if (recs.length === 0) return [];
 
                         return recs.map((rec) => {
-                            // 🔹 Calculate metrics dynamically from punch times
-                            const metrics = calculateMetrics(rec.punchIn, rec.punchOut);
+                            const metrics = calculateMetrics((rec as GroupedRecord).punchIn, (rec as GroupedRecord).punchOut);
 
                             return {
-                              date: new Date(rec.date).toLocaleDateString("en-US", {
+                              date: new Date((rec as GroupedRecord).date).toLocaleDateString("en-US", {
                                 year: "numeric",
                                 month: "long",
                                 day: "numeric",
@@ -694,45 +726,21 @@ export default function Table() {
                               userId: emp.userId,
                               name: `${emp.firstName} ${emp.lastName}`,
                               role: emp.role,
-                              punchIn: rec.punchIn ? formatTime(rec.punchIn) : "",
-                              punchOut: rec.punchOut ? formatTime(rec.punchOut) : "",
+                              punchIn: (rec as GroupedRecord).punchIn ? formatTime((rec as GroupedRecord).punchIn) : "",
+                              punchOut: (rec as GroupedRecord).punchOut ? formatTime((rec as GroupedRecord).punchOut) : "",
                               regularHours: metrics.regularHours,
                               overtime: metrics.overtime,
                               nightDifferential: metrics.nightDifferential,
                               late: metrics.late,
                               undertime: metrics.undertime,
-                              rawPunchIn: rec.punchIn || "",
-                             rawPunchOut: rec.punchOut || "",
+                              rawPunchIn: (rec as GroupedRecord).punchIn || "",
+                              rawPunchOut: (rec as GroupedRecord).punchOut || "",
                             };
                         });
                         });
 
-                        // To calculate the sum of all metrics...
-                        const totalMetrics = attendanceRows.reduce(
-                            (acc, row) => {
-                                acc.regularHours += row.regularHours || 0;
-                                acc.overtime += row.overtime || 0;
-                                acc.nightDifferential += row.nightDifferential || 0;
-                                acc.late += row.late || 0;
-                                acc.undertime += row.undertime || 0;
-                                return acc;
-                            },
-                            {
-                                regularHours: 0,
-                                overtime: 0,
-                                nightDifferential: 0,
-                                late: 0,
-                                undertime: 0,
-                            }
-                            );
-
-                            // setAllMetrics(totalMetrics);
-
-                        
-                        // 🔹 Sort attendance rows by date desc
                         attendanceRows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-                        // 🔹 Add placeholders AFTER attendance rows to make 10 rows minimum
                         const placeholdersNeeded = Math.max(0, 10 - attendanceRows.length);
                         const placeholderRows = Array.from({ length: placeholdersNeeded }, () => ({
                             date: "—",
@@ -746,9 +754,10 @@ export default function Table() {
                             nightDifferential: 0,
                             late: 0,
                             undertime: 0,
+                            rawPunchIn: "",
+                            rawPunchOut: "",
                         }));
 
-                        // 🔹 Final rows: real first, then placeholders
                         const finalRows = [...attendanceRows, ...placeholderRows];
 
                         return finalRows.map((emp, i) => {
@@ -781,7 +790,7 @@ export default function Table() {
                                     {emp.rawPunchIn && emp.rawPunchOut ? `${emp.regularHours} hrs` : "—"}
                                 </td>
                                 <td className="border-2 border-black px-4 py-2">
-                                    {emp.name ? "0 hrs" : "—"}
+                                    {emp.name !== "—" ? "0 hrs" : "—"}
                                 </td>
                                 <td className="border-2 border-black px-4 py-2">
                                     {emp.rawPunchIn && emp.rawPunchOut && emp.nightDifferential > 0 ? `${emp.nightDifferential} hrs` : emp.rawPunchIn && emp.rawPunchOut ? "0 hrs" : "—"}
@@ -818,59 +827,72 @@ export default function Table() {
                                         )}
 
                                         <button
-  onClick={async () => {
-    if (selectedOption === "Employees") {
-      if (!isPlaceholder) {
-        if (editRow === i) {
-          // Exiting edit mode → send update request
-          try {
-            const response = await fetch("http://localhost:5000/api/auth/update-user", {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${localStorage.getItem("token")}`, // your JWT token
-              },
-              body: JSON.stringify({
-                userId: emp.userId,
-                role: emp.role,             // make sure role is updated in state
-                shiftStart: emp.schedule.start, // updated start time
-                shiftEnd: emp.schedule.end,     // updated end time
-              }),
-            });
+                                            onClick={async () => {
+                                                if (selectedOption === "Employees") {
+                                                if (!isPlaceholder) {
+                                                    if (editRow === i) {
+                                                    try {
+                                                        const response = await fetch("http://localhost:5000/api/auth/update-user", {
+                                                        method: "PUT",
+                                                        headers: {
+                                                            "Content-Type": "application/json",
+                                                            Authorization: `Bearer ${localStorage.getItem("token")}`,
+                                                        },
+                                                        body: JSON.stringify({
+                                                            userId: emp.userId,
+                                                            role: editValues.role,
+                                                            shiftStart: editValues.shiftStart,
+                                                            shiftEnd: editValues.shiftEnd,
+                                                        }),
+                                                        });
 
-            const data = await response.json();
+                                                        const data = await response.json();
 
-            if (!response.ok) throw new Error(data.message || "Failed to update user");
+                                                        if (!response.ok) throw new Error(data.message || "Failed to update user");
 
-            console.log("User updated:", data);
-          } catch (err) {
-            console.error("Error updating user:", err);
-          }
-        } else {
-          startEditRow(i, emp); // Enter edit mode
-        }
-      }
-    } else {
-      actionSelect(editRow === i ? "Done" : "Edit", emp);
-    }
-  }}
-  draggable="false"
-  disabled={isPlaceholder}
-  type="button"
-  className={`p-2 rounded-lg shadow-lg select-none ${
-    isPlaceholder
-      ? "bg-gray-300 cursor-not-allowed opacity-60"
-      : "bg-[#B5CBB7] cursor-pointer"
-  }`}
->
-  <img
-    draggable="false"
-    src={editRow === i ? DoneIcon : EditIcon}
-    className="select-none cursor-pointer h-4"
-    alt=""
-  />
-</button>
+                                                        setUsers((prevUsers) =>
+                                                            prevUsers.map((u) =>
+                                                                u.userId === emp.userId
+                                                                ? {
+                                                                    ...u,
+                                                                    role: editValues.role,
+                                                                    schedule: {
+                                                                        start: editValues.shiftStart,
+                                                                        end: editValues.shiftEnd,
+                                                                    },
+                                                                    }
+                                                                : u
+                                                            )
+                                                        );
 
+                                                        setEditRow(null);
+                                                    } catch (err) {
+                                                        console.error("Error updating user:", err);
+                                                    }
+                                                    } else {
+                                                    startEditRow(i, emp);
+                                                    }
+                                                }
+                                                } else {
+                                                actionSelect(editRow === i ? "Done" : "Edit", emp);
+                                                }
+                                            }}
+                                            draggable="false"
+                                            disabled={isPlaceholder}
+                                            type="button"
+                                            className={`p-2 rounded-lg shadow-lg select-none ${
+                                                isPlaceholder
+                                                ? "bg-gray-300 cursor-not-allowed opacity-60"
+                                                : "bg-[#B5CBB7] cursor-pointer"
+                                            }`}
+                                            >
+                                            <img
+                                                draggable="false"
+                                                src={editRow === i ? DoneIcon : EditIcon}
+                                                className="select-none cursor-pointer h-4"
+                                                alt=""
+                                            />
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -891,7 +913,7 @@ export default function Table() {
                                 <img draggable='false' src={BackArrow} className="absolute select-none cursor-pointer top-1 left-1 h-8" alt="Back" />
                             </button>
                             <p draggable='false' className="text-black select-none text-3xl inter-semilight text-center">
-                                {selectedAction == 'View' ? "Daily Breakdown" : "Edit Daily Breakdown"}
+                                {selectedAction === 'View' ? "Daily Breakdown" : "Edit Daily Breakdown"}
                             </p>
                         </div>
 
@@ -983,7 +1005,7 @@ export default function Table() {
                                         }
                                         : calculateMetrics(punchIn, punchOut);
                                     
-                                    return selectedAction == 'View' ? (
+                                    return selectedAction === 'View' ? (
                                         <>
                                             <p className="text-black select-none text-lg inter-light">Regular Hours: <span className='inter-semilight'>{metrics.regularHours} hours</span></p>
                                             <p className="text-black select-none text-lg inter-light">Overtime: <span className='inter-semilight'>{metrics.overtime} hours</span></p>
@@ -1003,7 +1025,7 @@ export default function Table() {
                                 })()}
                             </div>
 
-                            {selectedAction == 'Edit' && (
+                            {selectedAction === 'Edit' && (
                                 <div className='flex justify-center w-full mt-8'>
                                     <button draggable='false' onClick={() => {handleSave()}} className='bg-[#B5CBB7] p-4 px-12 text-white text-xl inter-normal rounded-lg shadow-lg select-none cursor-pointer'>
                                         Save
