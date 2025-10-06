@@ -62,7 +62,12 @@ function formatTime(time24: string) {
   return `${h12}:${minutes} ${ampm}`;
 }
 
-function calculateMetrics(punchInTime: string, punchOutTime: string, shiftStart = "09:00", shiftEnd = "18:00") {
+function calculateMetrics(
+  punchInTime: string,
+  punchOutTime: string,
+  shiftStart = "09:00",
+  shiftEnd = "18:00"
+) {
   if (!punchInTime || !punchOutTime) {
     return {
       regularHours: 0,
@@ -73,77 +78,52 @@ function calculateMetrics(punchInTime: string, punchOutTime: string, shiftStart 
     };
   }
 
-  // Parse times
-  const punchIn = new Date(`2000-01-01T${punchInTime}`);
-  let punchOut = new Date(`2000-01-01T${punchOutTime}`);
-  const schedStart = new Date(`2000-01-01T${shiftStart}`);
-  let schedEnd = new Date(`2000-01-01T${shiftEnd}`);
+  // Convert HH:mm strings to minutes since 00:00
+  const toMinutes = (time: string) => {
+    const [h, m] = time.split(":").map(Number);
+    return h * 60 + m;
+  };
 
-  // Handle overnight shifts (e.g., 22:00 to 06:00)
-  const isOvernightShift = schedEnd <= schedStart;
-  if (isOvernightShift) {
-    schedEnd = new Date(`2000-01-02T${shiftEnd}`);
-  }
-  
-  // If punch out is before punch in, it crossed midnight
-  if (punchOut <= punchIn) {
-    punchOut = new Date(`2000-01-02T${punchOutTime}`);
-  }
+  let punchInMin = toMinutes(punchInTime);
+  let punchOutMin = toMinutes(punchOutTime);
+  const schedStartMin = toMinutes(shiftStart);
+  const schedEndMin = toMinutes(shiftEnd);
 
-  const punchInMin = punchIn.getTime() / (1000 * 60);
-  const punchOutMin = punchOut.getTime() / (1000 * 60);
-  const schedStartMin = schedStart.getTime() / (1000 * 60);
-  const schedEndMin = schedEnd.getTime() / (1000 * 60);
+  // Handle overnight punch (crossing midnight)
+  if (punchOutMin <= punchInMin) punchOutMin += 24 * 60;
 
-  // Calculate late (only if clocked in AFTER scheduled start)
-  let late = 0;
-  if (punchInMin > schedStartMin) {
-    late = punchInMin - schedStartMin;
-  }
+  // Late & undertime
+  const late = Math.max(0, punchInMin - schedStartMin);
+  const undertime = Math.max(0, schedEndMin - punchOutMin);
 
-  // Calculate undertime (only if clocked out BEFORE scheduled end)
-  let undertime = 0;
-  if (punchOutMin < schedEndMin) {
-    undertime = schedEndMin - punchOutMin;
-  }
-
-  // Regular hours: time worked within the scheduled shift
+  // Regular hours = overlap of work with scheduled shift
   const workStart = Math.max(punchInMin, schedStartMin);
   const workEnd = Math.min(punchOutMin, schedEndMin);
   const regularMinutes = Math.max(0, workEnd - workStart);
 
-  // Overtime: hours worked before scheduled start OR after scheduled end
-  let overtimeMinutes = 0;
-  
-  // Early clock-in (before scheduled start)
-  if (punchInMin < schedStartMin) {
-    overtimeMinutes += schedStartMin - punchInMin;
-  }
-  
-  // Late clock-out (after scheduled end)
-  if (punchOutMin > schedEndMin) {
-    overtimeMinutes += punchOutMin - schedEndMin;
-  }
+  // Overtime = minutes after shift end
+  const overtime = Math.max(0, punchOutMin - schedEndMin);
 
-  // Night differential calculation (10 PM to 6 AM)
-  const nightStart = new Date(`2000-01-01T22:00`).getTime() / (1000 * 60);
-  const nightEnd = new Date(`2000-01-02T06:00`).getTime() / (1000 * 60);
+  // Night differential window: 22:00 to 06:00 next day
+  const nightStart = 22 * 60; // 22:00 in minutes
+  const nightEnd = 6 * 60 + 24 * 60; // 06:00 next day = 30*60 = 1800 min
 
-  let nightDifferential = 0;
+  let ndMinutes = 0;
 
-  // Calculate hours worked during night differential period (10 PM - 6 AM)
+  // Calculate overlap with night diff
   const ndStart = Math.max(punchInMin, nightStart);
   const ndEnd = Math.min(punchOutMin, nightEnd);
-  nightDifferential = Math.max(0, ndEnd - ndStart);
+  ndMinutes = Math.max(0, ndEnd - ndStart);
 
   return {
     regularHours: Math.round((regularMinutes / 60) * 100) / 100,
-    overtime: Math.round((overtimeMinutes / 60) * 100) / 100,
-    nightDifferential: Math.round((nightDifferential / 60) * 100) / 100,
+    overtime: Math.round((overtime / 60) * 100) / 100,
+    nightDifferential: Math.round((ndMinutes / 60) * 100) / 100,
     late: Math.round((late / 60) * 100) / 100,
     undertime: Math.round((undertime / 60) * 100) / 100
   };
 }
+
 
 
 export default function Table() {

@@ -2,7 +2,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import admin from "firebase-admin"; // needed for FieldValue
-import db from "../firestore.js";
+import db from "../../backend/firestore.js";
 
 const router = express.Router();
 
@@ -140,17 +140,21 @@ router.get("/employee-stats", async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
-    const { date, period = 'daily' } = req.query;
+    const { date, period = "daily" } = req.query; // period: 'daily', 'weekly', 'monthly'
     const targetDate = date || new Date().toLocaleDateString("en-CA");
     const dateObj = new Date(targetDate);
+
     if (isNaN(dateObj)) return res.status(400).json({ message: "Invalid target date" });
 
+    // Calculate date range
     let startDate, endDate;
-    if (period === 'weekly') {
-      const dayOfWeek = dateObj.getDay();
-      startDate = new Date(dateObj); startDate.setDate(dateObj.getDate() - dayOfWeek);
-      endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 6);
-    } else if (period === 'monthly') {
+    if (period === "weekly") {
+      const dayOfWeek = dateObj.getDay(); // Sunday = 0
+      startDate = new Date(dateObj);
+      startDate.setDate(dateObj.getDate() - dayOfWeek);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+    } else if (period === "monthly") {
       startDate = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
       endDate = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0);
     } else {
@@ -158,10 +162,11 @@ router.get("/employee-stats", async (req, res) => {
       endDate = dateObj;
     }
 
+    const dateRange = `${startDate.toLocaleDateString("en-CA")} to ${endDate.toLocaleDateString("en-CA")}`;
     const startDateStr = startDate.toLocaleDateString("en-CA");
     const endDateStr = endDate.toLocaleDateString("en-CA");
-    const dateRange = `${startDateStr} to ${endDateStr}`;
 
+    // Fetch users
     const usersSnap = await db.collection("users").get();
     const users = {};
     usersSnap.forEach(doc => {
@@ -174,11 +179,13 @@ router.get("/employee-stats", async (req, res) => {
       };
     });
 
+    // Fetch attendance for date range
     const attendanceSnap = await db.collection("attendance")
       .where("date", ">=", startDateStr)
       .where("date", "<=", endDateStr)
       .get();
 
+    // Group punches by userId and date
     const punchRecordsByUser = {};
     attendanceSnap.forEach(doc => {
       const data = doc.data();
@@ -196,97 +203,89 @@ router.get("/employee-stats", async (req, res) => {
       return h * 60 + m;
     };
 
+    // Initialize stats
     const stats = {
-      totalEmployees: 0,
-      employees: [],
-      nightDiffCount: 0
+      regularHours: [],
+      overtime: [],
+      undertime: [],
+      late: [],
+      nightDifferential: [],
+      total: 0
     };
 
+    // Categorize users
     for (const [userId, user] of Object.entries(users)) {
       if (!user.schedule) continue;
-      stats.totalEmployees++;
+      stats.total++;
 
       const userPunchesByDay = punchRecordsByUser[userId] || {};
-      const userStat = {
-        userId,
-        name: user.name,
-        regularHours: 0,
-        overtime: 0,
-        undertime: 0,
-        late: 0,
-        nightDifferential: 0,
-        nightDiffFlag: false
-      };
+      const daysWithPunches = Object.keys(userPunchesByDay);
+      if (daysWithPunches.length === 0) continue;
+
+      let isRegular = true;
+      let isOvertime = false;
+      let isUndertime = false;
+      let isLate = false;
+      let isNightDiff = false;
 
       const schStartMinutes = timeToMinutes(user.schedule.start);
       const schEndMinutes = timeToMinutes(user.schedule.end);
+      const nightStart = 22 * 60; // 10:00 PM
+      const nightEnd = 6 * 60; // 6:00 AM
+
+      // Check if scheduled shift is a night shift
+      const worksNightShift = schStartMinutes >= nightStart || schEndMinutes <= nightEnd;
 
       for (const dayPunches of Object.values(userPunchesByDay)) {
         const punchIn = dayPunches.find(p => p.punchType === "punchIn");
         const punchOut = dayPunches.find(p => p.punchType === "punchOut");
-        if (!punchIn || !punchOut) continue;
+        if (!punchIn || !punchOut) {
+          isRegular = false;
+          continue;
+        }
 
         const punchInMinutes = timeToMinutes(punchIn.time);
         const punchOutMinutes = timeToMinutes(punchOut.time);
 
-        // Late
-        if (punchInMinutes > schStartMinutes) userStat.late += (punchInMinutes - schStartMinutes) / 60;
-
-        // Regular hours
-        const regularStart = Math.max(punchInMinutes, schStartMinutes);
-        const regularEnd = Math.min(punchOutMinutes, schEndMinutes);
-        const regularMinutes = Math.max(0, regularEnd - regularStart);
-        userStat.regularHours += regularMinutes / 60;
-
-        // Overtime
-        const overtimeMinutes = Math.max(0, punchOutMinutes - schEndMinutes);
-        userStat.overtime += overtimeMinutes / 60;
-
-        // Undertime
-        const undertimeMinutes = Math.max(0, schEndMinutes - punchOutMinutes);
-        userStat.undertime += undertimeMinutes / 60;
-
-        // Night differential
-        const nightStart = 22 * 60;
-        const nightEnd = 6 * 60;
-        let nightMinutes = 0;
-
-        if (punchOutMinutes < punchInMinutes) {
-          // crosses midnight
-          const firstPart = Math.max(0, 24 * 60 - punchInMinutes);
-          const secondPart = punchOutMinutes;
-          nightMinutes += Math.max(0, Math.min(firstPart, 24*60 - nightStart));
-          nightMinutes += Math.max(0, Math.min(secondPart, nightEnd));
-        } else {
-          if (punchInMinutes < nightEnd) nightMinutes += Math.min(punchOutMinutes, nightEnd) - punchInMinutes;
-          if (punchOutMinutes > nightStart) nightMinutes += punchOutMinutes - Math.max(punchInMinutes, nightStart);
+        if (punchInMinutes > schStartMinutes) {
+          isLate = true;
+          isRegular = false;
         }
-
-        if (nightMinutes > 0) userStat.nightDiffFlag = true;
-        userStat.nightDifferential += nightMinutes / 60;
+        if (punchOutMinutes < schEndMinutes) {
+          isUndertime = true;
+          isRegular = false;
+        }
+        if (punchOutMinutes - punchInMinutes > schEndMinutes - schStartMinutes) {
+          isOvertime = true;
+          isRegular = false;
+        }
+        if (worksNightShift) {
+          isNightDiff = true;
+          isRegular = false;
+        }
       }
 
-      if (userStat.nightDiffFlag) stats.nightDiffCount++;
-
-      stats.employees.push(userStat);
+      if (isRegular) stats.regularHours.push(user);
+      if (isOvertime) stats.overtime.push(user);
+      if (isUndertime) stats.undertime.push(user);
+      if (isLate) stats.late.push(user);
+      if (isNightDiff) stats.nightDifferential.push(user);
     }
-
-    const summary = {
-      totalEmployees: stats.totalEmployees,
-      nightDifferentialCount: stats.nightDiffCount,
-      totalRegularHours: stats.employees.reduce((sum, u) => sum + u.regularHours, 0),
-      totalOvertime: stats.employees.reduce((sum, u) => sum + u.overtime, 0),
-      totalUndertime: stats.employees.reduce((sum, u) => sum + u.undertime, 0),
-      totalLate: stats.employees.reduce((sum, u) => sum + u.late, 0),
-      totalNightDifferentialHours: stats.employees.reduce((sum, u) => sum + u.nightDifferential, 0)
-    };
 
     res.json({
       period,
       date: targetDate,
       dateRange,
-      summary,
-      details: stats.employees
+      totalEmployees: stats.total,
+      summary: {
+        total: stats.total,
+        regularHoursCount: stats.regularHours.length,
+        overtimeCount: stats.overtime.length,
+        undertimeCount: stats.undertime.length,
+        lateCount: stats.late.length,
+        nightDifferentialCount: stats.nightDifferential.length
+      },
+      details: stats
     });
 
   } catch (err) {
