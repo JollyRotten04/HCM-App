@@ -68,11 +68,10 @@ export default function Login(){
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const newErrors: any = {};
-        // Basic validation
+        const newErrors: Record<string, string> = {};
         if (!email) newErrors.email = "Email is required";
         if (!password) newErrors.password = "Password is required";
+
         if (!login) {
             if (!firstName) newErrors.firstName = "First name is required";
             if (!lastName) newErrors.lastName = "Last name is required";
@@ -81,58 +80,55 @@ export default function Login(){
             newErrors.retypePassword = "Passwords do not match";
         }
 
-        setErrors(newErrors);
-        if (Object.keys(newErrors).length > 0) {
-            console.warn("Validation failed:", newErrors);
-            return;
-        }
-
-            try {
-                if (login) {
-        // LOGIN flow
-        const response = await fetch("http://localhost:5000/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
+        setErrors({
+            email: newErrors.email || "",
+            password: newErrors.password || "",
+            firstName: newErrors.firstName || "",
+            lastName: newErrors.lastName || "",
+            retypePassword: newErrors.retypePassword || "",
+            forgotPassEmail: newErrors.forgotPassEmail || "",
         });
+        if (Object.keys(newErrors).length > 0) return;
 
-        const data = await response.json();
+        try {
+            if (login) {
+            // Use your deployed backend URL here
+            const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
 
-        if (!response.ok) {
-            alert(data.message || "Login failed");
-            return;
-        }
+            const data = await response.json();
 
-        // Save auth info to localStorage
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("userId", data.userId);
-        localStorage.setItem("isAdmin", data.isAdmin ? "true" : "false");
+            if (!response.ok) {
+                alert(data.message || "Login failed");
+                return;
+            }
 
-        // Save first & last name of current user to display
+            // Save auth info
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("userId", data.userId);
+            localStorage.setItem("isAdmin", data.isAdmin ? "true" : "false");
+            localStorage.setItem("firstName", data.firstName);
+            localStorage.setItem("lastName", data.lastName);
 
-        //   console.log(data);
-        localStorage.setItem("firstName", data.firstName);
-        localStorage.setItem("lastName", data.lastName);
+            // Update context
+            setIsAdmin(data.isAdmin);
 
-        // Update context
-        setIsAdmin(data.isAdmin);
-
-        navigate("/authenticated");
-        }
-
-            else {
+            navigate("/authenticated");
+            } else {
             // SIGNUP flow
-            //   console.log("Attempting registration with:", { firstName, lastName, email });
-
             await registerUser({ firstName, lastName, email, password, retypePassword });
             alert("Registration successful! You can now log in.");
-            setLogin(true); // Switch back to login
+            setLogin(true);
             }
         } catch (err) {
             console.error("Error during handleSubmit:", err);
             alert("Something went wrong. Please try again later.");
         }
-    };
+        };
+
 
         // To register the user
         async function registerUser({
@@ -149,7 +145,7 @@ export default function Login(){
         retypePassword: string;
         }) {
         try {
-            const response = await fetch("http://localhost:5000/api/auth/register", {
+            const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

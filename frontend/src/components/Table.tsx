@@ -186,9 +186,9 @@ export default function Table() {
 
             try {
                 const [res1, res2, res3] = await Promise.all([
-                    fetch("http://localhost:5000/api/auth/attendance", { headers: { Authorization: `Bearer ${token}` } }),
-                    fetch("http://localhost:5000/api/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
-                    fetch("http://localhost:5000/api/auth/daily-summary", { headers: { Authorization: `Bearer ${token}` } })
+                    fetch("https://hcm-app-ltkf.vercel.app/api/auth/attendance", { headers: { Authorization: `Bearer ${token}` } }),
+                    fetch("https://hcm-app-ltkf.vercel.app/api/auth/users", { headers: { Authorization: `Bearer ${token}` } }),
+                    fetch("https://hcm-app-ltkf.vercel.app/api/auth/daily-summary", { headers: { Authorization: `Bearer ${token}` } })
                 ]);
 
                 const attendanceData = await res1.json();
@@ -228,7 +228,7 @@ export default function Table() {
         if (!token) return;
 
         try {
-            const response = await fetch("http://localhost:5000/api/auth/total-metrics", {
+            const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/total-metrics", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -328,7 +328,7 @@ export default function Table() {
         if (!token) return;
 
         try {
-            const response = await fetch("http://localhost:5000/api/auth/attendance/update", {
+            const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/attendance/update", {
                 method: "PUT",
                 headers: {
                     "Content-Type": "application/json",
@@ -604,7 +604,7 @@ export default function Table() {
                                                     if (!isPlaceholder) {
                                                         if (editRow === i) {
                                                         try {
-                                                            const response = await fetch("http://localhost:5000/api/auth/update-user", {
+                                                            const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/update-user", {
                                                             method: "PUT",
                                                             headers: {
                                                                 "Content-Type": "application/json",
@@ -812,7 +812,7 @@ export default function Table() {
                                                 if (!isPlaceholder) {
                                                     if (editRow === i) {
                                                     try {
-                                                        const response = await fetch("http://localhost:5000/api/auth/update-user", {
+                                                        const response = await fetch("https://hcm-app-ltkf.vercel.app/api/auth/update-user", {
                                                         method: "PUT",
                                                         headers: {
                                                             "Content-Type": "application/json",

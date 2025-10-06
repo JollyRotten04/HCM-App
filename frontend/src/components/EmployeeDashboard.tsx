@@ -93,19 +93,21 @@ const togglePunchOut = async () => {
   };
 
   // Save punch to backend using logged-in userId
-  async function savePunch(field: "punchIn" | "punchOut") {
-    const date = getCurrentDateLocal();
-    const timestamp = getCurrentTimeLocal();
-    const token = localStorage.getItem("token");
-    const userId = localStorage.getItem("userId"); // Always fetch fresh from storage
+async function savePunch(field: "punchIn" | "punchOut") {
+  const date = getCurrentDateLocal();
+  const timestamp = getCurrentTimeLocal();
+  const token = localStorage.getItem("token");
+  const userId = localStorage.getItem("userId"); // Always fetch fresh from storage
 
-    if (!userId || !token) {
-      alert("User not logged in");
-      return;
-    }
+  if (!userId || !token) {
+    alert("User not logged in");
+    return;
+  }
 
-    try {
-      const response = await fetch("http://localhost:5000/api/auth/punch", {
+  try {
+    const response = await fetch(
+      "https://hcm-app-ltkf.vercel.app/api/auth/punch",
+      {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -117,22 +119,24 @@ const togglePunchOut = async () => {
           date,          // optional: send date
           time: timestamp // optional: send timestamp
         }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error("Failed to save punch:", data.message);
-        alert(`Failed to save ${field}: ${data.message || "Unknown error"}`);
-        return;
       }
+    );
 
-      console.log(`${field} saved for ${userId} on ${date} at ${timestamp}`);
-    } catch (err) {
-      console.error("Error saving punch:", err);
-      alert(`Error saving ${field}. Please try again.`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Failed to save punch:", data.message);
+      alert(`Failed to save ${field}: ${data.message || "Unknown error"}`);
+      return;
     }
+
+    console.log(`${field} saved for ${userId} on ${date} at ${timestamp}`);
+  } catch (err) {
+    console.error("Error saving punch:", err);
+    alert(`Error saving ${field}. Please try again.`);
   }
+}
+
 
   return (
     <div className="h-full w-full flex flex-col gap-8 scrollbar-overlay">

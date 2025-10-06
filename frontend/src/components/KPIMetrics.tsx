@@ -31,45 +31,48 @@ export default function KPIMetrics({ selectedTimePeriod }: KPIMetricsProps){
     const { setStatsContext } = useKPIStats() as { setStatsContext: (data: StatsData) => void };
 
     useEffect(() => {
-    const fetchStats = async () => {
-        setIsLoading(true);
-        try {
-            const token = localStorage.getItem('token');
-            const period = selectedTimePeriod.toLowerCase();
+  const fetchStats = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const period = selectedTimePeriod.toLowerCase();
 
-            let dateParam = "";
+      let dateParam = "";
 
-            if (period === "daily") {
-                // Use today's date for daily
-                dateParam = new Date().toISOString().split('T')[0];
-            } else if (period === "weekly") {
-                const today = new Date();
-                dateParam = today.toISOString().split('T')[0];
-            }
+      if (period === "daily") {
+        // Use today's date for daily
+        dateParam = new Date().toISOString().split('T')[0];
+      } else if (period === "weekly") {
+        const today = new Date();
+        dateParam = today.toISOString().split('T')[0];
+      }
 
-            const response = await fetch(`http://localhost:5000/api/auth/employee-stats?date=${dateParam}&period=${period}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                // console.log(data);
-                setStats(data); // Saves data locally...
-                setStatsContext(data); // Saves data to context...
-            } else {
-                console.error('Failed to fetch employee stats');
-            }
-        } catch (error) {
-            console.error('Error fetching employee stats:', error);
-        } finally {
-            setIsLoading(false);
+      const response = await fetch(
+        `https://hcm-app-ltkf.vercel.app/api/auth/employee-stats?date=${dateParam}&period=${period}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         }
-    };
+      );
 
-    fetchStats();
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data); // Saves data locally
+        setStatsContext(data); // Saves data to context
+      } else {
+        console.error('Failed to fetch employee stats');
+      }
+    } catch (error) {
+      console.error('Error fetching employee stats:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  fetchStats();
 }, [selectedTimePeriod, setStatsContext]);
+
 
 
     // Calculate percentages and determine if metrics are meeting targets
